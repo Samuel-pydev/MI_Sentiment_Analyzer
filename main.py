@@ -13,10 +13,13 @@ def load_model():
 
 sentiment = load_model()
 
-def analyse_mixed_sentiment(text):
+def analyze_mixed_sentiment(text):
     
-    sentences = re.split(r'[.!?]+|\bbut\b|\bhowever\b|\bthough\b|\balthough\b',text)
+    sentences = re.split(r'[.,!?]+|\bbut\b|\bhowever\b|\bthough\b|\balthough\b|\band\b',text)
     sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 5]
+    
+    if len(sentences) <= 1:
+        return None
     
     if len(sentences) <= 1:
         return None
@@ -34,6 +37,7 @@ def analyse_mixed_sentiment(text):
     sentiments_found = set(s['sentiment'] for s in sentence_results)
     has_positive = 'Positive' in sentiments_found
     has_negative = 'Negative' in sentiments_found
+
     
     if has_positive and has_negative:
         return sentence_results
@@ -47,78 +51,105 @@ label_map = {
     'LABEL_2':'Positive',
 }
 
+
 # Streamlit UI
 
-st.title("NIG Sentiment Analyzer")
+st.title("Sentiment Analyzer")
 st.write("Analyze sentiment in Nigerian social media text")
 
-tab1, tab2, tab3 = st.tabs(["Single text", "Batch Analysis", "testing Phrase"])
+tab1, = st.tabs([ "Batch Analysis"])
 
 with tab1:
-    user_input = st.text_area("Enter text to analyze:", height=100)
-
-    if st.button("Analyze Sentiment", key="single"):
-        if user_input:
-            # Analyze
-            result = sentiment(user_input)[0]
-            sentiment_label = label_map[result['label']]
-            confidence = result['score']
-            
-            # Display results
-            st.subheader("Results:")    
-            st.info(f"**Text:** ' {user_input} '")
-            st.info(f"**Sentiment:** {sentiment_label}")
-            st.info(f"**Confidence:** {confidence:.2%}")
-        else:
-            st.warning("Please enter some text first")
-
-with tab2:
     st.write("Enter multiple texts (one per line):")
     batch_input = st.text_area("Paste comments here:", height=200, key="batch")
     
     if st.button("Analyze All", key="batch_btn"):
         if batch_input:
             # Split by newlines and filter empty lines
-            texts = [ # TODO 
-                    line.strip() # get rid of white spaces in the line
-                   for line in batch_input.split('\n')  # for lines in the input split them at a new line ??? i get what it does but can't explain it 
-                        if line.strip()
-                    ]
+            texts = [line.strip() for line in batch_input.split('\n') if line.strip()]
             
-            if texts: # if text is not empty
-                st.write(f"Analyzing {len(texts)} texts...") # shows a text saying analyzing with the number of text/sentences 
+            if texts:
+                st.write(f"Analyzing {len(texts)} texts...")
                 
                 # Analyze each text
-                results = [] # results equals an empty list
+                results = []
+                mixed_results = []
+                
                 for text in texts:
-                    result = sentiment(text)[0]  
-                    results.append({ # append adds data to the end of a list 
-                        'text': text,
-                        'sentiment': label_map[result['label']],
-                        'confidence': result['score']
-                    })
+                    # Check if mixed first
+                    mixed_analysis = analyze_mixed_sentiment(text)
+                    
+                    if mixed_analysis:
+                        # Store mixed sentiment separately
+                        mixed_results.append({
+                            'original_text': text,
+                            'breakdown': mixed_analysis
+                        })
+                        # For summary, count as mixed
+                        results.append({
+                            'text': text,
+                            'sentiment': 'Mixed',
+                            'confidence': 0.5
+                        })
+                    else:
+                        # Regular sentiment
+                        result = sentiment(text)[0]
+                        results.append({
+                            'text': text,
+                            'sentiment': label_map[result['label']],
+                            'confidence': result['score']
+                        })
                 
                 # Show summary stats
                 st.subheader("Summary:")
-                positive = sum(1 for analysis in results if analysis['sentiment'] == 'Positive') # assigns 1 to be added for the ampunt of r in results 
+                positive = sum(1 for analysis in results if analysis['sentiment'] == 'Positive')
                 negative = sum(1 for analysis in results if analysis['sentiment'] == 'Negative')
                 neutral = sum(1 for analysis in results if analysis['sentiment'] == 'Neutral')
+                mixed = sum(1 for analysis in results if analysis['sentiment'] == 'Mixed')
                 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Positie", positive)
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Positive", positive)
                 col2.metric("Negative", negative)
                 col3.metric("Neutral", neutral)
+                col4.metric("Mixed", mixed)
                 
-                # Show individual results
+                # Show mixed sentiment details first if any
+                if mixed_results:
+                    st.subheader("Mixed Sentiment Texts:")
+                    with st.expander(f"Mixed ({len(mixed_results)})"):
+                        for idx, item in enumerate(mixed_results, 1):
+                            st.write(f"**{idx}. {item['original_text']}**")
+                            st.write("Breakdown:")
+                            for part in item['breakdown']:
+                                st.write(f"  - {part['sentiment']} ({part['confidence']:.1%}): _{part['text']}_")
+                            st.write("")
+                
+                # Group results by sentiment
                 st.subheader("Individual Results:")
-                for num, analysis in enumerate(results, 1): # enumerate to get the index and the item  , and the number is to tell it to start from 1
-                    with st.expander(f"{num}. {analysis['sentiment']} ({analysis['confidence']:.1%})"):
-                        st.write(analysis['text'])
+                positive_texts = [r for r in results if r['sentiment'] == 'Positive']
+                negative_texts = [r for r in results if r['sentiment'] == 'Negative']
+                neutral_texts = [r for r in results if r['sentiment'] == 'Neutral']
+                
+                # Show grouped dropdowns
+                if positive_texts:
+                    with st.expander(f"Positive ({len(positive_texts)})"):
+                        for analysis in positive_texts:
+                            st.write(f"- {analysis['text']} ({analysis['confidence']:.1%})")
+
+                if negative_texts:
+                    with st.expander(f"Negative ({len(negative_texts)})"):
+                        for analysis in negative_texts:
+                            st.write(f"- {analysis['text']} ({analysis['confidence']:.1%})")
+
+                if neutral_texts:
+                    with st.expander(f"Neutral ({len(neutral_texts)})"):
+                        for analysis in neutral_texts:
+                            st.write(f"- {analysis['text']} ({analysis['confidence']:.1%})")
             else:
                 st.warning("No valid texts found")
         else:
             st.warning("Please enter some texts first")
             
-            
-    with tab3:
-         st.write(" Hello Wrold ")
+
+
+
