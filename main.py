@@ -2,10 +2,14 @@ from transformers import pipeline
 import streamlit as st 
 import re
 
+token = st.secrets.get("HF_TOKEN", None)
+
 @st.cache_resource
 def load_model():
     return pipeline("sentiment-analysis",
-                    model="cardiffnlp/twitter-roberta-base-sentiment")
+                    model="cardiffnlp/twitter-roberta-base-sentiment",
+                    token=token 
+                    )
 
 sentiment = load_model()
 
